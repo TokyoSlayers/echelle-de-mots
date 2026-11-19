@@ -1,4 +1,4 @@
-const PBKDF2_ITERATIONS = 120_000
+const PBKDF2_ITERATIONS = 100_000
 
 export type SessionClaims = { sub: string; pseudo: string; exp: number }
 
