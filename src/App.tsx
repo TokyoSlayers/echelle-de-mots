@@ -1,35 +1,21 @@
-import { Timer, Volume2, VolumeX } from 'lucide-react'
+import { LogOut, Timer, Volume2, VolumeX } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Game } from './components/Game'
 import { RulesDialog } from './components/RulesDialog'
 import { Scoreboard } from './components/Scoreboard'
 import { Button } from './components/ui/button'
 import { setMuted, playSound } from './lib/sounds'
-import {
-  loadMuted,
-  loadPseudo,
-  loadScores,
-  loadStats,
-  nextLoss,
-  nextWin,
-  rankScores,
-  saveMuted,
-  savePseudo,
-  saveScores,
-  saveStats,
-  type ScoreEntry,
-  type Stats,
-} from './lib/storage'
+import { loadMuted, loadPseudo, saveMuted, savePseudo, type ScoreEntry } from './lib/storage'
+import { useBoard } from './lib/useBoard'
 
 type Tab = 'jeu' | 'scores'
 
 export default function App() {
   const [tab, setTab] = useState<Tab>('jeu')
-  const [stats, setStats] = useState<Stats>(() => loadStats())
-  const [scores, setScores] = useState<ScoreEntry[]>(() => rankScores(loadScores()))
   const [pseudo, setPseudo] = useState(() => loadPseudo())
   const [muted, setMutedState] = useState(() => loadMuted())
   const [latestId, setLatestId] = useState<string | null>(null)
+  const board = useBoard()
 
   useEffect(() => {
     setMuted(muted)
@@ -37,24 +23,38 @@ export default function App() {
   }, [muted])
 
   function onWin() {
-    const next = nextWin(stats)
-    saveStats(next)
-    setStats(next)
+    board.recordLocalWin()
   }
 
   function onLoss() {
-    const next = nextLoss(stats)
-    saveStats(next)
-    setStats(next)
+    if (board.connected && board.account) {
+      void board.publish(
+        {
+          id: crypto.randomUUID(),
+          pseudo: board.account,
+          score: 0,
+          steps: 0,
+          optimal: 3,
+          seconds: 0,
+          difficulty: 'facile',
+          length: 3,
+          date: new Date().toISOString(),
+        },
+        'loss',
+      )
+      return
+    }
+    board.recordLocalLoss()
   }
 
-  function onSaveScore(entry: ScoreEntry) {
-    const next = rankScores([...scores, entry]).slice(0, 100)
-    saveScores(next)
-    savePseudo(entry.pseudo)
-    setScores(next)
-    setPseudo(entry.pseudo)
-    setLatestId(entry.id)
+  async function onSaveScore(entry: ScoreEntry): Promise<string | null> {
+    const error = await board.publish(entry, 'win')
+    if (!error) {
+      savePseudo(entry.pseudo)
+      setPseudo(entry.pseudo)
+      setLatestId(entry.id)
+    }
+    return error
   }
 
   return (
@@ -74,8 +74,14 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-2 rounded-full bg-white/80 px-3 py-2 text-sm font-bold text-[#2a1845] shadow-sm">
               <Timer className="size-4 text-[#0f9b8e]" />
-              Série {stats.streak}
+              Série {board.stats.streak}
             </span>
+            {board.account ? (
+              <Button variant="outline" size="sm" onClick={() => void board.noteLogout()}>
+                <LogOut className="size-4" />
+                {board.account}
+              </Button>
+            ) : null}
             <RulesDialog />
             <Button
               variant="outline"
@@ -109,25 +115,41 @@ export default function App() {
           </button>
         </div>
 
+        {board.banner && (
+          <p className="rounded-2xl bg-[#fff3cc] px-4 py-3 text-sm font-semibold text-[#8a5a00]">{board.banner}</p>
+        )}
+
         <main className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
           <div className={tab === 'scores' ? 'hidden lg:block' : undefined}>
             <Game
-              stats={stats}
-              pseudo={pseudo}
+              stats={board.stats}
+              pseudo={board.account ?? pseudo}
+              online={board.connected}
+              account={board.account}
               onWin={onWin}
               onLoss={onLoss}
               onSaveScore={onSaveScore}
               onShowScores={() => setTab('scores')}
+              onAuthenticated={(name) => void board.noteLogin(name)}
             />
           </div>
           <div className={tab === 'jeu' ? 'hidden lg:block' : undefined}>
-            <Scoreboard stats={stats} scores={scores} latestId={latestId} />
+            <Scoreboard
+              stats={board.stats}
+              scores={board.scores}
+              latestId={latestId}
+              loading={board.loading}
+              online={board.connected}
+              account={board.account}
+              onAuthenticated={(name) => void board.noteLogin(name)}
+              onLogout={() => void board.noteLogout()}
+            />
           </div>
         </main>
 
         <footer className="pb-4 text-center text-xs text-[#2a1845]/55">
           Inspiré des Doublets de Lewis Carroll. Les accents sont ignorés : tête et tete sont le même mot.
-          Les scores restent dans ce navigateur.
+          Le mot de passe et la base ne sont jamais dans cette page : seul le serveur les connaît.
         </footer>
       </div>
     </div>

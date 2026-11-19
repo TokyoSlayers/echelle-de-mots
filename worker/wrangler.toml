@@ -1,0 +1,27 @@
+name = "echelle-de-mots-api"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# L'identifiant ci-dessous est un placeholder pour le développement local.
+# Après `npx wrangler d1 create echelle-de-mots`, remplace-le par l'id affiché.
+# Ce n'est pas un secret : la base n'accepte des connexions que depuis ce Worker.
+[[d1_databases]]
+binding = "DB"
+database_name = "echelle-de-mots"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[vars]
+ALLOWED_ORIGIN = "http://127.0.0.1:4317"
+
+[env.production]
+name = "echelle-de-mots-api"
+
+[env.production.vars]
+ALLOWED_ORIGIN = "https://tokyoslayers.github.io"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "echelle-de-mots"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

@@ -1,0 +1,3 @@
+# Copie ce fichier vers worker/.dev.vars (il est ignoré par git).
+# Génère une valeur longue et aléatoire. Ne la mets jamais dans le dépôt.
+AUTH_SECRET=remplace-moi-par-une-chaine-aleatoire-d-au-moins-32-caracteres

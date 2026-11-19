@@ -47,6 +47,11 @@ export function RulesDialog() {
             <strong className="text-[#2a1845]">Série.</strong> Une victoire l’allonge. Abandonner,
             ou lancer un nouveau défi après avoir déjà joué, la remet à zéro.
           </li>
+          <li>
+            <strong className="text-[#2a1845]">Compte.</strong> Le pseudo et le mot de passe sont
+            vérifiés par le serveur. Le site ne contient ni mot de passe de base, ni secret : le
+            navigateur ne parle qu’à l’API, en HTTPS, avec un cookie inaccessible au JavaScript.
+          </li>
         </ul>
       </DialogContent>
     </Dialog>

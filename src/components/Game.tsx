@@ -7,6 +7,7 @@ import { SCORE_RULES, computeScore, formatDuration, formatPoints, formatSigned }
 import { playSound } from '../lib/sounds'
 import { cleanPseudo, type ScoreEntry, type Stats } from '../lib/storage'
 import { DIFFICULTY_HINT, DIFFICULTY_LABEL, DIFFICULTY_ORDER, type Difficulty } from '../lib/types'
+import { AuthForm } from './AuthForm'
 import { LadderView } from './LadderView'
 import { Badge } from './ui/badge'
 import { Button } from './ui/button'
@@ -17,23 +18,30 @@ const COLORS = ['#ff5a36', '#ffb703', '#0f9b8e', '#3d7eff', '#7c3aed', '#ff4d8d'
 export function Game({
   stats,
   pseudo,
+  online,
+  account,
   onWin,
   onLoss,
   onSaveScore,
   onShowScores,
+  onAuthenticated,
 }: {
   stats: Stats
   pseudo: string
+  online: boolean
+  account: string | null
   onWin: () => void
   onLoss: () => void
-  onSaveScore: (entry: ScoreEntry) => void
+  onSaveScore: (entry: ScoreEntry) => Promise<string | null>
   onShowScores: () => void
+  onAuthenticated: (pseudo: string) => void
 }) {
   const [difficulty, setDifficulty] = useState<Difficulty>('facile')
   const [game, dispatch] = useReducer(gameReducer, undefined, () => freshGame(createChallenge('facile'), Date.now()))
   const [tick, setTick] = useState(() => Date.now())
-  const [name, setName] = useState(pseudo)
+  const [name, setName] = useState(account ?? pseudo)
   const [nameError, setNameError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const settled = useRef(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const victoryRef = useRef<HTMLDivElement>(null)
@@ -151,15 +159,16 @@ export function Game({
     dispatch({ type: 'abandon', now: Date.now() })
   }
 
-  function onSave(event: FormEvent) {
+  async function onSave(event: FormEvent) {
     event.preventDefault()
-    if (game.saved || game.phase !== 'won' || game.endedAt === null) return
+    if (game.saved || game.phase !== 'won' || game.endedAt === null || saving) return
+    if (online && !account) return
     const clean = cleanPseudo(name)
-    if (clean.length === 1) {
+    if (!online && clean.length === 1) {
       setNameError('Deux caractères minimum.')
       return
     }
-    const chosen = clean.length === 0 ? 'Joueur' : clean
+    const chosen = online ? (account ?? '') : clean.length === 0 ? 'Joueur' : clean
     const entry: ScoreEntry = {
       id: crypto.randomUUID(),
       pseudo: chosen,
@@ -171,9 +180,15 @@ export function Game({
       length: challenge.length,
       date: new Date().toISOString(),
     }
+    setSaving(true)
+    const error = await onSaveScore(entry)
+    setSaving(false)
+    if (error) {
+      setNameError(error)
+      return
+    }
     setName(chosen)
     setNameError(null)
-    onSaveScore(entry)
     dispatch({ type: 'saved' })
   }
 
@@ -242,8 +257,10 @@ export function Game({
           <p className="text-xs font-extrabold tracking-[0.16em] text-white/60 uppercase">Abandon</p>
           <p className="font-display text-2xl">Une solution en {challenge.optimal} pas</p>
           <p className="mt-1 text-sm text-white/75">
-            Tu t’étais arrêté à « {current} ». La série retombe à zéro
-            {stats.bestStreak > 0 ? ` (record : ${stats.bestStreak}).` : '.'}
+            Tu t’étais arrêté à « {current} ».
+            {online && !account
+              ? ' Connecte-toi pour que cette défaite compte dans ta série.'
+              : ` La série retombe à zéro${stats.bestStreak > 0 ? ` (record : ${stats.bestStreak}).` : '.'}`}
           </p>
         </div>
       )}
@@ -337,34 +354,48 @@ export function Game({
           </dl>
           {game.saved ? (
             <div className="mt-4">
-              <p className="font-bold text-emerald-700">Score enregistré pour {name}.</p>
+              <p className="font-bold text-emerald-700">
+                Score enregistré{online ? ' sur ton compte' : ` pour ${name}`}.
+              </p>
               <Button variant="outline" className="mt-3" onClick={onShowScores}>
                 Voir le tableau
               </Button>
             </div>
+          ) : online && !account ? (
+            <div className="mt-4">
+              <p className="mb-3 text-sm font-semibold text-[#2a1845]/75">
+                Connecte-toi pour publier ce score. Le mot de passe reste sur le serveur, jamais dans la page.
+              </p>
+              <AuthForm onAuthenticated={onAuthenticated} compact />
+            </div>
           ) : (
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              {!online && (
+                <div className="flex-1">
+                  <label htmlFor="pseudo" className="mb-1 block text-xs font-extrabold tracking-wide text-[#2a1845]/55 uppercase">
+                    Pseudo
+                  </label>
+                  <Input
+                    id="pseudo"
+                    value={name}
+                    maxLength={16}
+                    onChange={(event) => {
+                      setName(event.target.value)
+                      setNameError(null)
+                    }}
+                    placeholder="Ton pseudo"
+                    className="normal-case tracking-normal"
+                    autoComplete="nickname"
+                  />
+                </div>
+              )}
               <div className="flex-1">
-                <label htmlFor="pseudo" className="mb-1 block text-xs font-extrabold tracking-wide text-[#2a1845]/55 uppercase">
-                  Pseudo
-                </label>
-                <Input
-                  id="pseudo"
-                  value={name}
-                  maxLength={16}
-                  onChange={(event) => {
-                    setName(event.target.value)
-                    setNameError(null)
-                  }}
-                  placeholder="Ton pseudo"
-                  className="normal-case tracking-normal"
-                  autoComplete="nickname"
-                />
-                {nameError && <p className="mt-1 text-sm font-bold text-[#be123c]">{nameError}</p>}
+                {online && account && <p className="mb-2 text-sm font-bold text-[#2a1845]">Compte : {account}</p>}
+                {nameError && <p className="mb-2 text-sm font-bold text-[#be123c]">{nameError}</p>}
+                <Button type="submit" className="h-14 w-full sm:w-auto" disabled={saving}>
+                  {saving ? 'Envoi…' : online ? 'Publier' : 'Enregistrer'}
+                </Button>
               </div>
-              <Button type="submit" className="h-14 sm:self-end">
-                Enregistrer
-              </Button>
             </div>
           )}
         </form>
